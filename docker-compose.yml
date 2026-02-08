@@ -1,0 +1,31 @@
+services:
+  whisper:
+    image: yuriichv/whisperxapi:v0.0.1
+    container_name: whisperxapi
+    restart: unless-stopped
+    networks:
+      - backend
+    ports:
+      - "18000:8000"
+    environment:
+      TZ: "Europe/Moscow"
+      WHISPERX_DEBUG: "true"
+      WHISPERX_HF_TOKEN: ""
+      WHISPERX_DEFAULT_LANGUAGE: "ru"
+      WHISPERX_DEFAULT_MODEL: "large-v3"
+      WHISPERX_DEFAULT_DIARIZE: "true"
+      WHISPERX_NO_AUTH: "false"
+      WHISPERX_API_TOKEN: "fxpy2SU9qmdSOb9R-ahu8Vt5V5dv9Cq0O11-D4VnO3c"
+      HF_HOME: "/opt/data/hf-cache"
+    volumes:
+      - /files/llm-containers/whisper-data:/opt/data
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]
+              capabilities: [gpu]
+networks:
+  backend:
+    driver: bridge
