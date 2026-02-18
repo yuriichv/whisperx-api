@@ -9,6 +9,10 @@ from .transcribe_router import router as transcribe_router
 from .transcribe_router import startup_load, shutdown_cleanup
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
 
 security = HTTPBearer()
 

@@ -17,6 +17,7 @@ class Config(BaseSettings):
     api_token: str = "" # auth token for http 
     no_auth: bool = False # disable topken authentication
 
+    log_level: str = "INFO"
     default_align: bool = False
     default_diarize: bool = False
     batch_size: int = 16
