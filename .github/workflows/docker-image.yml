@@ -39,7 +39,3 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-
-            
-    - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag yuriichv/whisperx-api:$(tag)
