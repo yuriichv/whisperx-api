@@ -7,6 +7,7 @@ from .config import config
 from .models_router import router as models_router
 from .transcribe_router import router as transcribe_router
 from .transcribe_router import startup_load, shutdown_cleanup
+from .health_router import router as health_router
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -15,6 +16,7 @@ logging.basicConfig(
 )
 
 security = HTTPBearer()
+
 
 async def verify_token(credentials: HTTPAuthorizationCredentials = Security(security)):
     if credentials.credentials != config.api_token:
@@ -25,19 +27,22 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Security(secu
         )
     return credentials.credentials
 
+
 # if WHISPERX_NO_AUTH=true disable token verification
 deps = [] if config.no_auth else [Depends(verify_token)]
-app = FastAPI(title="WhisperX OpenAI-compatible Transcriptions API", dependencies=deps)
+app = FastAPI(title="WhisperX OpenAI-compatible Transcriptions API")
 
 # routers
-app.include_router(models_router)
-app.include_router(transcribe_router)
+app.include_router(models_router, dependencies=deps)
+app.include_router(transcribe_router, dependencies=deps)
+app.include_router(health_router)
+
 
 # lifecycle
 @app.on_event("startup")
 async def _startup():
     if not config.api_token and not config.no_auth:
-    # Token gen
+        # Token gen
         config.api_token = secrets.token_urlsafe(32)
         logger.warning(
             "API_TOKEN not set in environment variables! "
@@ -51,6 +56,7 @@ async def _startup():
         logger.info("API_TOKEN loaded from environment")
 
     await startup_load()
+
 
 @app.on_event("shutdown")
 async def _shutdown():
