@@ -1,4 +1,4 @@
-#FROM python:3.12-slim
+# важно правильную версию torch. Сейчас транзитивно использует 2.8
 FROM pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -21,7 +21,7 @@ RUN useradd -m -u 10001 -s /bin/bash whisper \
  && mkdir -p /app/.cache \
  && chown -R whisper:whisper /app
 
-RUN pip install --no-cache-dir uv
+RUN pip install --no-cache-dir --break-system-packages uv
 
 # deps
 COPY pyproject.toml /app/pyproject.toml
@@ -31,6 +31,7 @@ COPY uv.lock /app/uv.lock
 ENV UV_PROJECT_ENVIRONMENT=/app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
 
+# ВАЖНО: pyproject/lock должны быть согласованы с torch 2.10 / torchcodec 0.10
 RUN uv sync --no-dev --no-cache
 
 COPY src/whisperx_api /app/whisperx_api

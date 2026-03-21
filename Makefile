@@ -1,7 +1,7 @@
 # Makefile for building and managing Docker container for whisperx-api
 
-IMAGE_NAME ?= whisperx-api
-TAG ?= v0.0.1
+IMAGE_NAME ?= yuriichv/whisperx-api
+TAG ?= v0.0.3
 CONTAINER_NAME ?= whisperx-api
 
 # Build Docker image

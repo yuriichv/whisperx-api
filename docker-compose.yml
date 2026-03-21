@@ -1,7 +1,7 @@
 services:
   whisper:
-    image: yuriichv/whisperxapi:v0.0.1
-    container_name: whisperxapi
+    image: yuriichv/whisperx-api:v0.0.2
+    container_name: whisperx-api
     restart: unless-stopped
     networks:
       - backend
@@ -10,15 +10,19 @@ services:
     environment:
       TZ: "Europe/Moscow"
       WHISPERX_DEBUG: "true"
+      WHISPERX_LOG_LEVEL: "INFO"
       WHISPERX_HF_TOKEN: ""
       WHISPERX_DEFAULT_LANGUAGE: "ru"
       WHISPERX_DEFAULT_MODEL: "large-v3"
-      WHISPERX_DEFAULT_DIARIZE: "true"
+      WHISPERX_DEFAULT_DIARIZE: "false"
       WHISPERX_NO_AUTH: "false"
       WHISPERX_API_TOKEN: "fxpy2SU9qmdSOb9R-ahu8Vt5V5dv9Cq0O11-D4VnO3c"
-      HF_HOME: "/opt/data/hf-cache"
+      HF_HOME: "/app/.cache/huggingface"
+      TORCH_HOME: "/app/.cache/torch"
+      XDG_CACHE_HOME: "/app/.cache"
     volumes:
-      - /files/llm-containers/whisper-data:/opt/data
+      - /files/llm-containers/whisper-data/huggingface:/app/.cache/huggingface
+      - /files/llm-containers/whisper-data/torch:/app/.cache/torch
     deploy:
       resources:
         reservations:
