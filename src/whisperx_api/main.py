@@ -61,6 +61,7 @@ app.include_router(health_router)
 # lifecycle
 @app.on_event("startup")
 async def _startup():
+    logger.info("Application strating up. Loading model")
     if not config.api_token and not config.no_auth:
         # Token gen
         config.api_token = secrets.token_urlsafe(32)

@@ -1,0 +1,26 @@
+schema: spec-driven
+
+# Project context (optional)
+# This is shown to AI when creating artifacts.
+# Add your tech stack, conventions, style guides, domain knowledge, etc.
+# Example:
+   context: |
+     Tech stack: python, fastapi, pydantic, docker
+     Every SDD change make in separate git feature branch. Commit after changes. Merge to main on archive.
+     We use conventional commits
+     Domain: STT, transcribation service
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+   rules:
+     proposal:
+      - Keep proposals under 500 words
+      - Пишем текст на русском
+    specs:
+      - Пишем текст на русском
+    design:
+      - Пишем текст на русском
+      - Include plantUML sequence diagrams for complex flows
+    tasks:
+      - Пишем текст на русском

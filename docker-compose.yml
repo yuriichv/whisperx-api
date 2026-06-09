@@ -1,6 +1,6 @@
 services:
   whisper:
-    image: yuriichv/whisperx-api:v0.0.2
+    image: yuriichv/whisperx-api:v0.0.4
     container_name: whisperx-api
     restart: unless-stopped
     networks:

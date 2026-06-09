@@ -138,35 +138,92 @@ def _build_verbose_json(
     return out
 
 
+def _split_segments_by_word_speaker(result: Dict[str, Any]) -> List[Dict[str, Any]]:
+    blocks: List[Dict[str, Any]] = []
+
+    for seg in result.get("segments", []):
+        words = seg.get("words") or []
+        words_with_speaker = [
+            w for w in words if w.get("speaker") and "start" in w and w.get("word")
+        ]
+
+        if words_with_speaker:
+            current_speaker: Optional[str] = None
+            current_words: List[Dict[str, Any]] = []
+
+            def flush_words():
+                nonlocal current_speaker, current_words
+                if not current_words:
+                    return
+                text = " ".join(w.get("word", "") for w in current_words).strip()
+                if text:
+                    blocks.append(
+                        {
+                            "start": current_words[0].get("start"),
+                            "end": current_words[-1].get(
+                                "end", current_words[-1].get("start")
+                            ),
+                            "text": text,
+                            "speaker": current_speaker,
+                        }
+                    )
+                current_speaker = None
+                current_words = []
+
+            for word in words_with_speaker:
+                speaker = word.get("speaker")
+                if current_speaker is None:
+                    current_speaker = speaker
+                if speaker != current_speaker:
+                    flush_words()
+                    current_speaker = speaker
+                current_words.append(word)
+            flush_words()
+        else:
+            text = (seg.get("text") or "").strip()
+            if text:
+                blocks.append(
+                    {
+                        "start": seg.get("start"),
+                        "end": seg.get("end"),
+                        "text": text,
+                        "speaker": seg.get("speaker"),
+                    }
+                )
+
+    return blocks
+
+
 def _build_diarized_json(
-    result: Dict[str, Any], speaker_text: str, language: Optional[str]
+    blocks: List[Dict[str, Any]],
+    speaker_text: str,
+    language: Optional[str],
+    detected_language: Optional[str] = None,
 ) -> Dict[str, Any]:
     speakers = set()
     segments_out = []
-    for seg in result.get("segments", []):
-        spk = seg.get("speaker")
+    for block in blocks:
+        spk = block.get("speaker")
         if spk:
             speakers.add(spk)
         segments_out.append(
             {
                 "type": "transcript.text.segment",
-                "start": seg.get("start"),
-                "end": seg.get("end"),
-                "text": (seg.get("text") or "").strip(),
+                "start": block.get("start"),
+                "end": block.get("end"),
+                "text": (block.get("text") or "").strip(),
                 "speaker": spk,
             }
         )
     return {
-        "language": result.get("language") or language,
+        "language": detected_language or language,
         "text": speaker_text,
         "speakers": sorted(list(speakers)),
         "segments": segments_out,
     }
 
 
-def _build_diarized_text(result: Dict[str, Any]) -> str:
-    segments: List[Dict[str, Any]] = result.get("segments") or []
-
+def _build_diarized_text(blocks: List[Dict[str, Any]]) -> str:
     lines: List[str] = []
     current_speaker: Optional[str] = None
     current_chunks: List[str] = []
@@ -181,9 +238,9 @@ def _build_diarized_text(result: Dict[str, Any]) -> str:
         current_speaker = None
         current_chunks = []
 
-    for seg in segments:
-        speaker = seg.get("speaker") or "UNKNOWN"
-        chunk = seg.get("text") or ""
+    for block in blocks:
+        speaker = block.get("speaker") or "UNKNOWN"
+        chunk = block.get("text") or ""
         if not chunk:
             continue
 
@@ -247,6 +304,7 @@ def _run_pipeline_sync(
     language: Optional[str],
     do_align: bool,
     do_diarize: bool,
+    num_speakers: Optional[int],
     min_speakers: Optional[int],
     max_speakers: Optional[int],
 ) -> Dict[str, Any]:
@@ -290,12 +348,20 @@ def _run_pipeline_sync(
     if do_diarize:
         logger.info("make diarization...")
         _ensure_diarize_pipeline_sync(state)
-        diarize_segments = state.DIARIZE_PIPELINE(
-            audio,
-            min_speakers=min_speakers,
-            max_speakers=max_speakers,
+        if num_speakers is not None:
+            diarize_segments = state.DIARIZE_PIPELINE(
+                audio,
+                num_speakers=num_speakers,
+            )
+        else:
+            diarize_segments = state.DIARIZE_PIPELINE(
+                audio,
+                min_speakers=min_speakers,
+                max_speakers=max_speakers,
+            )
+        result = whisperx.assign_word_speakers(
+            diarize_segments, result, fill_nearest=True
         )
-        result = whisperx.assign_word_speakers(diarize_segments, result)
         logger.info("diarization done")
 
     return result
@@ -321,6 +387,7 @@ async def transcriptions(
     # WhisperX extensions
     align: Optional[str] = Form(None),
     diarize: Optional[str] = Form(None),
+    num_speakers: Optional[int] = Form(None),
     min_speakers: Optional[int] = Form(None),
     max_speakers: Optional[int] = Form(None),
 ):
@@ -345,10 +412,17 @@ async def transcriptions(
 
     rf = (response_format or "json").strip().lower()
     language = language or config.default_language
-    do_align = _bool(align, default=config.default_align)
     do_diarize = _bool(
         diarize, default=(rf == "diarized_json") or config.default_diarize
     )
+    do_align = _bool(align, default=config.default_align)
+    if do_diarize and align is None:
+        do_align = True
+
+    if num_speakers is not None and num_speakers < 1:
+        raise HTTPException(
+            status_code=400, detail="num_speakers must be >= 1"
+        )
 
     tmp_dir = tempfile.mkdtemp(prefix="whisperx_api_")
     in_path = os.path.join(tmp_dir, _safe_filename(file.filename))
@@ -368,6 +442,7 @@ async def transcriptions(
                 language,
                 do_align,
                 do_diarize,
+                num_speakers,
                 min_speakers,
                 max_speakers,
             )
@@ -406,9 +481,16 @@ async def transcriptions(
                     status_code=400,
                     detail="response_format=diarized_json requires diarize=true (or WHISPERX_DEFAULT_DIARIZE=true)",
                 )
-            speaker_text = _build_diarized_text(result)
-            # speaker_text = "".join([f"{(seg.get('speaker') or '')}: {seg.get('text', '')}\n" for seg in result.get("segments", [])]).strip()
-            return JSONResponse(_build_diarized_json(result, speaker_text, language))
+            speaker_blocks = _split_segments_by_word_speaker(result)
+            speaker_text = _build_diarized_text(speaker_blocks)
+            return JSONResponse(
+                _build_diarized_json(
+                    speaker_blocks,
+                    speaker_text,
+                    language,
+                    detected_language=result.get("language"),
+                )
+            )
 
         raise HTTPException(
             status_code=400, detail=f"Unsupported response_format: {response_format}"
