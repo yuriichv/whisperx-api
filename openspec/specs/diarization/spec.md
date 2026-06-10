@@ -44,29 +44,51 @@ API `/v1/audio/transcriptions` SHALL принимать опциональный
 
 ### Requirement: fill_nearest при назначении спикеров
 
-Система SHALL вызывать `whisperx.assign_word_speakers` с `fill_nearest=true` для назначения спикера словам и сегментам на границах интервалов диаризации, где нет прямого временного пересечения.
+Система SHALL передавать в `whisperx.assign_word_speakers` значение `fill_nearest` из конфигурации сервера (`WHISPERX_FILL_NEAREST`, default `true`). При `fill_nearest=true` словам и сегментам на границах интервалов диаризации без прямого пересечения назначается спикер ближайшего сегмента. При `fill_nearest=false` назначение происходит только при временном overlap.
 
-#### Scenario: Слово на границе сегмента диаризации
+#### Scenario: fill_nearest включён (default)
 
-- **WHEN** word-level timestamp слова не пересекается ни с одним интервалом диаризации, но находится рядом с ближайшим сегментом
+- **WHEN** сервис запущен без `WHISPERX_FILL_NEAREST` или с `WHISPERX_FILL_NEAREST=true`
+- **THEN** `assign_word_speakers` вызывается с `fill_nearest=true`
+
+#### Scenario: fill_nearest отключён через env
+
+- **WHEN** сервис запущен с `WHISPERX_FILL_NEAREST=false`
+- **THEN** `assign_word_speakers` вызывается с `fill_nearest=false`
+
+#### Scenario: Слово на границе сегмента диаризации при fill_nearest=true
+
+- **WHEN** `WHISPERX_FILL_NEAREST=true` и word-level timestamp слова не пересекается ни с одним интервалом диаризации, но находится рядом с ближайшим сегментом
 - **THEN** слову назначается спикер ближайшего сегмента диаризации
 
-### Requirement: Word-level форматирование diarized_json
+#### Scenario: Слово на границе без overlap при fill_nearest=false
 
-Система SHALL формировать `diarized_json.text` и `diarized_json.segments` на основе `words[]` с разбивкой при смене `word.speaker`, а не только по `segment.speaker` Whisper.
+- **WHEN** `WHISPERX_FILL_NEAREST=false` и word-level timestamp слова не пересекается ни с одним интервалом диаризации
+- **THEN** слову не назначается спикер через fill_nearest (остаётся без `speaker`, если нет overlap)
 
-#### Scenario: Смена спикера внутри сегмента Whisper
+### Requirement: Segment-level форматирование diarized_json
 
-- **WHEN** после alignment и assign_word_speakers внутри одного Whisper-сегмента слова имеют разных спикеров (`SPEAKER_00`, `SPEAKER_01`)
-- **THEN** `diarized_json.text` содержит отдельные строки для каждого непрерывного блока одного спикера
-- **THEN** `diarized_json.segments` содержит отдельные записи с корректными `start`, `end`, `speaker` и `text` для каждого блока
+Система SHALL формировать `diarized_json.text` и `diarized_json.segments` на основе Whisper-сегментов (`segment.speaker`, `segment.text`, `segment.start`, `segment.end`), а не на основе пересборки из `words[]`.
 
-#### Scenario: Fallback без words
+#### Scenario: Формирование сегментов из Whisper
 
-- **WHEN** alignment отключён (`align=false`) и в результате нет `words[]` со спикерами
-- **THEN** система использует текущую логику группировки по `segment.speaker` (без word-level разбивки)
+- **WHEN** клиент запрашивает `response_format=diarized_json` с включённой диаризацией
+- **THEN** каждый Whisper-сегмент с непустым `text` и назначенным `speaker` попадает в `diarized_json.segments`
+- **THEN** текст сегмента берётся из `segment.text`, а не из join токенов `words[]`
 
-#### Scenario: Склейка соседних слов одного спикера
+#### Scenario: Склейка соседних сегментов одного спикера в text
 
-- **WHEN** несколько подряд идущих слов имеют одинакового спикера
-- **THEN** они объединяются в один блок с `start` первого слова и `end` последнего слова
+- **WHEN** несколько подряд идущих Whisper-сегментов имеют одинакового `segment.speaker`
+- **THEN** `diarized_json.text` объединяет их в одну строку `SPEAKER_X: <text>`
+- **THEN** `diarized_json.segments` сохраняет отдельную запись для каждого Whisper-сегмента
+
+#### Scenario: Сегменты без speaker
+
+- **WHEN** Whisper-сегмент не получил `speaker` после диаризации
+- **THEN** сегмент включается в вывод с `speaker` = `UNKNOWN` или `null` (как в текущей логике `_build_diarized_text`)
+
+#### Scenario: words[] не используется для diarized_json
+
+- **WHEN** после alignment в сегменте есть `words[]` с разными `word.speaker`
+- **THEN** `diarized_json` использует `segment.speaker` (majority overlap), а не разбивает по `word.speaker`
+- **THEN** `verbose_json` по-прежнему отдаёт `words[].speaker` для клиентов, которым нужна word-level детализация

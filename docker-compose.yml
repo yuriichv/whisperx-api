@@ -15,6 +15,7 @@ services:
       WHISPERX_DEFAULT_LANGUAGE: "ru"
       WHISPERX_DEFAULT_MODEL: "large-v3"
       WHISPERX_DEFAULT_DIARIZE: "false"
+      WHISPERX_FILL_NEAREST: "true"  # assign nearest diarization speaker to words without overlap
       WHISPERX_NO_AUTH: "false"
       WHISPERX_API_TOKEN: "fxpy2SU9qmdSOb9R-ahu8Vt5V5dv9Cq0O11-D4VnO3c"
       HF_HOME: "/app/.cache/huggingface"

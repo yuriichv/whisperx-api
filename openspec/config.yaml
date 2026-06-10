@@ -9,10 +9,6 @@ schema: spec-driven
      Every SDD change make in separate git feature branch. Commit after changes. Merge to main on archive.
      We use conventional commits
      Domain: STT, transcribation service
-
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
    rules:
      proposal:
       - Keep proposals under 500 words

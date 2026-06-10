@@ -20,6 +20,7 @@ class Config(BaseSettings):
     log_level: str = "INFO"
     default_align: bool = False
     default_diarize: bool = False
+    fill_nearest: bool = True
     batch_size: int = 16
     debug: bool = False
     hf_token: str = "" # HUGGINGFACE_TOKEN for download dearize model

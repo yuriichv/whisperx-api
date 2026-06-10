@@ -6,7 +6,7 @@ API server for **[WhisperX](https://github.com/m-bain/whisperX)** exposing an Op
 
 **WhisperX extensions**: `align`, `diarize`, `num_speakers`, `min_speakers`, `max_speakers`.
 
-When `diarize=true` (or `response_format=diarized_json`), alignment is enabled automatically unless `align=false` is passed explicitly. Word-level speaker labels are used to split output when speakers change within a Whisper segment.
+When `diarize=true` (or `response_format=diarized_json`), alignment is enabled automatically unless `align=false` is passed explicitly. `diarized_json` is built from Whisper segments (`segment.speaker` + `segment.text`). Word-level speaker labels are available in `verbose_json` via `words[].speaker`.
 
 **Auth bearer token** support: env | process lifetime generation | disabled.
 
@@ -25,6 +25,8 @@ curl -v http://server/v1/audio/transcriptions \
 ```
 
 `align` is enabled automatically for diarization. Pass `align=false` only if you need faster processing and accept lower speaker accuracy.
+
+**`WHISPERX_FILL_NEAREST`** (default `true`): when enabled, words and segments without direct time overlap with a diarization interval get the nearest speaker. Disable (`false`) if boundary words are assigned to the wrong speaker on noisy audio.
 
 **Notes**: 
 - `model` does not affect behavior and is kept for OpenAI client compatibility: there is only one actual model, configured at application startup (admin-controlled).
