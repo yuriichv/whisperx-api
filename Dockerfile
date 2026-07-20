@@ -9,6 +9,9 @@ ENV HF_HOME=/app/.cache/huggingface
 ENV TORCH_HOME=/app/.cache/torch
 ENV XDG_CACHE_HOME=/app/.cache
 
+# NLTK данные для sentence splitting (punkt_tab)
+ENV NLTK_DATA=/app/nltk_data
+
 WORKDIR /app
 
 # ffmpeg нужен для декодирования аудио
@@ -34,11 +37,16 @@ ENV PATH="/app/.venv/bin:$PATH"
 # ВАЖНО: pyproject/lock должны быть согласованы с torch 2.10 / torchcodec 0.10
 RUN uv sync --no-dev --no-cache
 
+# NLTK punkt_tab для sentence splitting в whisperx alignment
+# Скачивается один раз при сборке, чтобы рантайм не зависел от сети
+RUN uv run python -m nltk.downloader punkt_tab
+
 COPY src/whisperx_api /app/whisperx_api
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh \ 
     && chown whisper:whisper /app/entrypoint.sh \
-    && chown -R whisper:whisper /app/whisperx_api
+    && chown -R whisper:whisper /app/whisperx_api \
+    && chown -R whisper:whisper /app/nltk_data
 
 EXPOSE 8000
 
