@@ -105,6 +105,22 @@ class AppState:
                         f"Failed to pre‑load align model for {config.default_language}: {e}"
                     )
 
+        # Fallback: если NLTK punkt_tab не был загружен при сборке — пробуем сейчас
+        try:
+            import nltk
+            nltk.data.find("tokenizers/punkt_tab")
+        except LookupError:
+            logger.info("NLTK punkt_tab not found at build time, downloading now...")
+            try:
+                nltk.download("punkt_tab", quiet=True)
+            except Exception as e:
+                logger.warning(
+                    f"Failed to download NLTK punkt_tab: {e} — "
+                    "sentence splitting in alignment may fail"
+                )
+        except Exception:
+            pass
+
 
 # Dependency to expose the shared state via FastAPI's Depends system
 
