@@ -6,7 +6,30 @@ API server for **[WhisperX](https://github.com/m-bain/whisperX)** exposing an Op
 
 **WhisperX extensions**: `align`, `diarize`, `num_speakers`, `min_speakers`, `max_speakers`.
 
-When `diarize=true` (or `response_format=diarized_json`), alignment is enabled automatically unless `align=false` is passed explicitly. `diarized_json` is built from Whisper segments (`segment.speaker` + `segment.text`). Word-level speaker labels are available in `verbose_json` via `words[].speaker`.
+When `diarize=true` (or `response_format=diarized_json`), alignment is enabled automatically unless `align=false` is passed explicitly.
+
+### Контракт числа спикеров (`num_speakers` / `min_speakers` / `max_speakers`)
+
+Число участников разговора **задаёт клиент**. Значения пробрасываются в `whisperx.DiarizationPipeline` без значений по умолчанию на бэкенде:
+
+- `num_speakers` — точное число спикеров; имеет приоритет над `min_speakers`/`max_speakers` (если задан, `min`/`max` игнорируются pyannote).
+- `min_speakers` / `max_speakers` — диапазон допустимого числа спикеров.
+- Если ни один параметр не передан, пайплайн вызывается с `None`, и **pyannote сам определяет** число спикеров (автоопределение).
+
+Валидация (HTTP 400 при нарушении) применяется **только при запрошенной диаризации**: `num_speakers >= 1`, `min_speakers >= 1`, `max_speakers >= 1`, `min_speakers <= max_speakers`. Без диаризации параметры числа спикеров игнорируются.
+
+### Формат `diarized_json` — гибридный word-level
+
+`diarized_json` строится по результату `whisperx.assign_word_speakers`:
+
+- если внутри одного Whisper-сегмента есть **реальная смена спикера** на уровне слов (`word.speaker`), сегмент разбивается на блоки по смене спикера с точными границами `start`/`end`;
+- иначе текст блока берётся целиком из `segment.text` (без потери реплик и без пересборки из токенов);
+- соседние блоки одного спикера склеиваются в один репликовый блок;
+- сегмент без спикера отображается с `speaker` = `UNKNOWN` или `null`.
+
+Цена компромисса «без потери текста»: если внутри сегмента реально несколько спикеров, но разбивка по `word.speaker` невозможна (например, у части слов нет спикера), фрагмент атрибутируется доминантному спикеру сегмента (`segment.speaker`).
+
+`verbose_json` по-прежнему отдаёт `words[].speaker` для word-level детализации.
 
 **Auth bearer token** support: env | process lifetime generation | disabled.
 
@@ -27,6 +50,8 @@ curl -v http://server/v1/audio/transcriptions \
 `align` is enabled automatically for diarization. Pass `align=false` only if you need faster processing and accept lower speaker accuracy.
 
 **`WHISPERX_FILL_NEAREST`** (default `true`): when enabled, words and segments without direct time overlap with a diarization interval get the nearest speaker. Disable (`false`) if boundary words are assigned to the wrong speaker on noisy audio.
+
+**`WHISPERX_DIARIZE_MODEL`** (default `pyannote/speaker-diarization-community-1`): имя diarization-модели pyannote, используемой для `whisperx.DiarizationPipeline`. Число участников зависит от модели; при проблемах с разделением спикеров можно указать другую модель.
 
 **Notes**: 
 - `model` does not affect behavior and is kept for OpenAI client compatibility: there is only one actual model, configured at application startup (admin-controlled).

@@ -1,27 +1,4 @@
-# Diarization
-
-Speaker diarization behavior for the `/v1/audio/transcriptions` API.
-
-## Requirements
-
-### Requirement: Авто-align при диаризации
-
-Система SHALL автоматически включать этап alignment (`align=true`), когда запрошена диаризация (`diarize=true` или `response_format=diarized_json`), если клиент явно не передал `align=false`.
-
-#### Scenario: Диаризация без явного align
-
-- **WHEN** клиент отправляет запрос с `diarize=true` и не передаёт параметр `align`
-- **THEN** пайплайн выполняет alignment перед диаризацией
-
-#### Scenario: Явное отключение align
-
-- **WHEN** клиент отправляет запрос с `diarize=true` и `align=false`
-- **THEN** пайплайн пропускает alignment и сохраняет текущее поведение без word-level timestamps
-
-#### Scenario: diarized_json без явного diarize
-
-- **WHEN** клиент отправляет запрос с `response_format=diarized_json` и не передаёт `align`
-- **THEN** система включает и диаризацию, и alignment
+## MODIFIED Requirements
 
 ### Requirement: Параметр num_speakers
 
@@ -94,30 +71,6 @@ API `/v1/audio/transcriptions` SHALL принимать опциональный
 - **WHEN** `WHISPERX_DIARIZE_MODEL` не задан
 - **THEN** используется `pyannote/speaker-diarization-community-1`
 
-### Requirement: fill_nearest при назначении спикеров
-
-Система SHALL передавать в `whisperx.assign_word_speakers` значение `fill_nearest` из конфигурации сервера (`WHISPERX_FILL_NEAREST`, default `true`). При `fill_nearest=true` словам и сегментам на границах интервалов диаризации без прямого пересечения назначается спикер ближайшего сегмента. При `fill_nearest=false` назначение происходит только при временном overlap.
-
-#### Scenario: fill_nearest включён (default)
-
-- **WHEN** сервис запущен без `WHISPERX_FILL_NEAREST` или с `WHISPERX_FILL_NEAREST=true`
-- **THEN** `assign_word_speakers` вызывается с `fill_nearest=true`
-
-#### Scenario: fill_nearest отключён через env
-
-- **WHEN** сервис запущен с `WHISPERX_FILL_NEAREST=false`
-- **THEN** `assign_word_speakers` вызывается с `fill_nearest=false`
-
-#### Scenario: Слово на границе сегмента диаризации при fill_nearest=true
-
-- **WHEN** `WHISPERX_FILL_NEAREST=true` и word-level timestamp слова не пересекается ни с одним интервалом диаризации, но находится рядом с ближайшим сегментом
-- **THEN** слову назначается спикер ближайшего сегмента диаризации
-
-#### Scenario: Слово на границе без overlap при fill_nearest=false
-
-- **WHEN** `WHISPERX_FILL_NEAREST=false` и word-level timestamp слова не пересекается ни с одним интервалом диаризации
-- **THEN** слову не назначается спикер через fill_nearest (остаётся без `speaker`, если нет overlap)
-
 ### Requirement: Word-level атрибуция текста с корректными границами
 
 Система SHALL формировать `diarized_json` с разбивкой речи по смене спикера на уровне слов (`word.speaker` из `whisperx.assign_word_speakers`), когда внутри одного Whisper-сегмента присутствуют слова разных спикеров.
@@ -146,3 +99,11 @@ API `/v1/audio/transcriptions` SHALL принимать опциональный
 
 - **WHEN** Whisper-сегмент не получил спикера после диаризации
 - **THEN** сегмент отображается с `speaker` = `UNKNOWN` или `null`, текст без потери
+
+## REMOVED Requirements
+
+### Requirement: Segment-level форматирование diarized_json
+
+**Reason**: Форматирование строго по Whisper-сегментам (`segment.speaker` majority vote) сливает реплики разных людей внутри одного сегмента и не даёт точных границ смены спикера. Заменяется гибридным word-level форматом с сохранением целостности текста.
+
+**Migration**: `diarized_json` строится через гибридный форматтер: разбивка по `word.speaker` при смене спикера, иначе цельный `segment.text`, склейка соседних блоков одного спикера. Клиенты, которым нужна пер-сегментная гранулярность Whisper без диаризации, используют `verbose_json`.

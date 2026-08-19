@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional, Tuple, TypedDict
 
 
 from .config import config
+from .formatting import hybrid_word_blocks
 from .state import AppState, get_state
 
 logging.basicConfig(
@@ -139,23 +140,25 @@ def _build_verbose_json(
 
 
 def _build_diarized_json(
-    result: Dict[str, Any], speaker_text: str, language: Optional[str]
+    result: Dict[str, Any],
+    blocks: List[Dict[str, Any]],
+    speaker_text: str,
+    language: Optional[str],
 ) -> Dict[str, Any]:
-    speakers = set()
-    segments_out = []
-    for seg in result.get("segments", []):
-        spk = seg.get("speaker")
-        if spk:
-            speakers.add(spk)
-        segments_out.append(
-            {
-                "type": "transcript.text.segment",
-                "start": seg.get("start"),
-                "end": seg.get("end"),
-                "text": (seg.get("text") or "").strip(),
-                "speaker": spk,
-            }
-        )
+    # Гибридный word-level формат: разбивка по word.speaker при смене спикера,
+    # иначе цельный segment.text; склейка соседних блоков одного спикера.
+    # blocks — результат hybrid_word_blocks(result["segments"]), вычисляется один раз.
+    speakers = {b.get("speaker") for b in blocks if b.get("speaker")}
+    segments_out = [
+        {
+            "type": "transcript.text.segment",
+            "start": b.get("start"),
+            "end": b.get("end"),
+            "text": (b.get("text") or "").strip(),
+            "speaker": b.get("speaker"),
+        }
+        for b in blocks
+    ]
     return {
         "language": result.get("language") or language,
         "text": speaker_text,
@@ -164,9 +167,7 @@ def _build_diarized_json(
     }
 
 
-def _build_diarized_text(result: Dict[str, Any]) -> str:
-    segments: List[Dict[str, Any]] = result.get("segments") or []
-
+def _build_diarized_text(blocks: List[Dict[str, Any]]) -> str:
     lines: List[str] = []
     current_speaker: Optional[str] = None
     current_chunks: List[str] = []
@@ -181,9 +182,9 @@ def _build_diarized_text(result: Dict[str, Any]) -> str:
         current_speaker = None
         current_chunks = []
 
-    for seg in segments:
-        speaker = seg.get("speaker") or "UNKNOWN"
-        chunk = seg.get("text") or ""
+    for block in blocks:
+        speaker = block.get("speaker") or "UNKNOWN"
+        chunk = block.get("text") or ""
         if not chunk:
             continue
 
@@ -233,8 +234,12 @@ def _ensure_diarize_pipeline_sync(state: AppState) -> None:
             status_code=500, detail="HF_TOKEN is required for diarization"
         )
 
+    # model_name из конфигурации (WHISPERX_DIARIZE_MODEL) — конструируем
+    # whisperx.DiarizationPipeline с указанной моделью pyannote
     state.DIARIZE_PIPELINE = DiarizationPipeline(
-        token=config.hf_token, device=state.DEVICE
+        model_name=config.diarize_model,
+        token=config.hf_token,
+        device=state.DEVICE,
     )
 
 
@@ -291,17 +296,17 @@ def _run_pipeline_sync(
     if do_diarize:
         logger.info("make diarization...")
         _ensure_diarize_pipeline_sync(state)
-        if num_speakers is not None:
-            diarize_segments = state.DIARIZE_PIPELINE(
-                audio,
-                num_speakers=num_speakers,
-            )
-        else:
-            diarize_segments = state.DIARIZE_PIPELINE(
-                audio,
-                min_speakers=min_speakers,
-                max_speakers=max_speakers,
-            )
+        # Проброс числа спикеров в whisperx.DiarizationPipeline без значений
+        # по умолчанию на бэкенде. Приоритет num_speakers > min/max обеспечивает
+        # сам pyannote (если задан num_speakers, min/max игнорируются).
+        # Если все параметры отсутствуют — передаём None, и pyannote сам
+        # определяет число спикеров (автоопределение).
+        diarize_segments = state.DIARIZE_PIPELINE(
+            audio,
+            num_speakers=num_speakers,
+            min_speakers=min_speakers,
+            max_speakers=max_speakers,
+        )
         result = whisperx.assign_word_speakers(
             diarize_segments, result, fill_nearest=config.fill_nearest
         )
@@ -362,10 +367,24 @@ async def transcriptions(
     if do_diarize and align is None:
         do_align = True
 
-    if num_speakers is not None and num_speakers < 1:
-        raise HTTPException(
-            status_code=400, detail="num_speakers must be >= 1"
-        )
+    # Валидация параметров числа спикеров применяется только при запрошенной
+    # диаризации; без диаризации эти параметры не имеют смысла и не проверяются.
+    if do_diarize:
+        if num_speakers is not None and num_speakers < 1:
+            raise HTTPException(status_code=400, detail="num_speakers must be >= 1")
+        if min_speakers is not None and min_speakers < 1:
+            raise HTTPException(status_code=400, detail="min_speakers must be >= 1")
+        if max_speakers is not None and max_speakers < 1:
+            raise HTTPException(status_code=400, detail="max_speakers must be >= 1")
+        if (
+            min_speakers is not None
+            and max_speakers is not None
+            and min_speakers > max_speakers
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="min_speakers must not exceed max_speakers",
+            )
 
     tmp_dir = tempfile.mkdtemp(prefix="whisperx_api_")
     in_path = os.path.join(tmp_dir, _safe_filename(file.filename))
@@ -424,9 +443,11 @@ async def transcriptions(
                     status_code=400,
                     detail="response_format=diarized_json requires diarize=true (or WHISPERX_DEFAULT_DIARIZE=true)",
                 )
-            speaker_text = _build_diarized_text(result)
+            # Гибридные блоки вычисляем один раз и переиспользуем для json и text
+            blocks = hybrid_word_blocks(result.get("segments") or [])
+            speaker_text = _build_diarized_text(blocks)
             return JSONResponse(
-                _build_diarized_json(result, speaker_text, language)
+                _build_diarized_json(result, blocks, speaker_text, language)
             )
 
         raise HTTPException(

@@ -24,6 +24,8 @@ class Config(BaseSettings):
     batch_size: int = 16
     debug: bool = False
     hf_token: str = "" # HUGGINGFACE_TOKEN for download dearize model
+    # Имя diarization-модели pyannote, используемой DiarizationPipeline (env WHISPERX_DIARIZE_MODEL)
+    diarize_model: str = "pyannote/speaker-diarization-community-1"
 
 
 config = Config()
