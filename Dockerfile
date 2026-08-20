@@ -38,8 +38,11 @@ ENV PATH="/app/.venv/bin:$PATH"
 RUN uv sync --no-dev --no-cache
 
 # NLTK punkt_tab для sentence splitting в whisperx alignment
-# Скачивается один раз при сборке, чтобы рантайм не зависел от сети
-RUN uv run python -m nltk.downloader punkt_tab
+# Скачивается один раз при сборке, чтобы рантайм не зависел от сети.
+# Важно: nltk.downloader использует каталог из NLTK_DATA только если он уже существует,
+# иначе пишет в ~/nltk_data (у root — /root/nltk_data). Поэтому создаём его заранее.
+RUN mkdir -p /app/nltk_data \
+ && uv run python -m nltk.downloader punkt_tab
 
 COPY src/whisperx_api /app/whisperx_api
 COPY entrypoint.sh /app/entrypoint.sh
