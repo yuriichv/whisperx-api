@@ -131,7 +131,15 @@
 
 ### Requirement: Валидация Whisper token budget для prompt и hotwords
 
-После нормализации система SHALL проверять conditioning budget через tokenizer ASR-модели (Whisper tokens):
+После нормализации система SHALL проверять conditioning budget через tokenizer ASR-модели (Whisper tokens).
+
+Tokenizer SHALL разрешаться в порядке приоритета:
+1. `ASR_PIPELINE.tokenizer` (faster-whisper `Tokenizer` на `FasterWhisperPipeline`);
+2. `ASR_PIPELINE.model.hf_tokenizer` (fallback при auto-language до первого `transcribe`).
+
+Если оба недоступны — HTTP 503 до запуска пайплайна.
+
+После нормализации система SHALL проверять conditioning budget (Whisper tokens):
 
 - `prompt` (`initial_prompt`) ≤ **100** tokens;
 - `hotwords` ≤ **150** tokens;

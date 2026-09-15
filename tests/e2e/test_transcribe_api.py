@@ -204,6 +204,22 @@ def test_prompt_and_hotwords_applied_to_asr_options(client):
     assert hotwords == "WhisperX, pyannote"
 
 
+def test_prompt_validated_via_hf_tokenizer_when_pipeline_tokenizer_missing(client):
+    """auto-language: pipeline.tokenizer=None, validation через model.hf_tokenizer."""
+    from fixtures.transcription import FakeASRPipeline, FakeHfTokenizer, make_diarization_e2e_result
+
+    asr = FakeASRPipeline(
+        make_diarization_e2e_result(),
+        pipeline_tokenizer=None,
+        hf_tokenizer=FakeHfTokenizer(),
+    )
+    client.app.state.ASR_PIPELINE = asr
+    client._asr = asr
+
+    resp = _post(client, prompt="Короткий контекст")
+    assert resp.status_code == 200
+
+
 def test_prompt_with_diarize_allowed(client):
     """prompt + diarize=true → 200 (WhisperX extension)."""
     resp = _post(

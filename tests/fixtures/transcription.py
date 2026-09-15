@@ -83,16 +83,37 @@ class FakeTokenizer:
         return list(range(len(text)))
 
 
+class FakeHfEncoding:
+    def __init__(self, text: str) -> None:
+        self.ids = list(range(len(text)))
+
+
+class FakeHfTokenizer:
+    """Имитация tokenizers.Tokenizer (model.hf_tokenizer в faster-whisper)."""
+
+    def encode(self, text: str) -> FakeHfEncoding:
+        return FakeHfEncoding(text)
+
+
 class FakeASRPipeline:
     """Заглушка ASR-пайплайна для unit/e2e тестов."""
 
-    def __init__(self, result: dict | None = None):
+    def __init__(
+        self,
+        result: dict | None = None,
+        *,
+        pipeline_tokenizer: FakeTokenizer | None = None,
+        hf_tokenizer: FakeHfTokenizer | None = None,
+    ):
         self.result = result or {
             "language": "en",
             "segments": [{"text": "hello", "start": 0.0, "end": 1.0}],
         }
         self.last_kwargs: dict | None = None
-        self.model = SimpleNamespace(tokenizer=FakeTokenizer())
+        self.tokenizer = pipeline_tokenizer if pipeline_tokenizer is not None else FakeTokenizer()
+        self.model = SimpleNamespace(
+            hf_tokenizer=hf_tokenizer if hf_tokenizer is not None else FakeHfTokenizer(),
+        )
         self.options = SimpleNamespace(initial_prompt=None, hotwords=None)
         self.conditioning_calls: list[tuple] = []
 
