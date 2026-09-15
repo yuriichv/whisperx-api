@@ -1,6 +1,8 @@
 .cursor
 .opencode
 
+.chunkhound
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -152,3 +154,4 @@ Thumbs.db
 
 sync.sh
 tmp/
+.worktrees/

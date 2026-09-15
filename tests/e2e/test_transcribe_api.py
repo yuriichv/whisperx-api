@@ -1,10 +1,18 @@
-"""E2E-тесты API-контракта диаризации через реальный FastAPI-роутер.
+"""E2E-тесты API-контракта транскрипции через FastAPI-роутер.
 
-Внешние тяжёлые вызовы (whisperx.load_audio/align, DiarizationPipeline,
-assign_word_speakers) подменяются на заглушки, чтобы тест проходил в CI без
-GPU. Тестируется реальный путь кода: валидация, проброс num/min/max в
-whisperx.DiarizationPipeline и гибридный word-level формат diarized_json.
+Сценарии (spec transcription-api):
+- диаризация: num/min/max, diarized_json, word-level split
+- prompt/hotwords: проброс в ASR options, char/token limits 500/1000/100/150/200
+- prompt + diarize=true → 200 (WhisperX extension)
+- auto-language: запрос без language проходит
+- response проходит Pydantic model_validate
 """
+
+from whisperx_api.features.transcription.schemas import (
+    DiarizedJsonResponse,
+    TranscriptionJsonResponse,
+    VerboseJsonResponse,
+)
 
 
 def _post(client, **form):
@@ -122,31 +130,117 @@ def test_validation_http_400(client):
         assert resp.status_code == 400, f"{form} -> {resp.status_code}"
 
 
-def test_diarize_model_from_config(client):
-    """2.2: DiarizationPipeline конструируется с model_name из конфигурации."""
-    import whisperx_api.transcribe_router as tr
+def test_transcription_without_language(client):
+    """Фаза 0: auto-detect — запрос без language должен проходить."""
+    resp = client.post(
+        "/v1/audio/transcriptions",
+        data={"response_format": "json"},
+        files=[("file", ("audio.wav", b"\x00\x00\x00\x00", "audio/wav"))],
+    )
+    assert resp.status_code == 200
+    assert "text" in resp.json()
+
+
+def test_fill_nearest_passed_to_assign_word_speakers(client, monkeypatch):
+    """fill_nearest из конфигурации пробрасывается в assign_word_speakers."""
     from whisperx_api.config import config
+    from whisperx_api.features.transcription import _whisperx as wx
 
     captured = {}
-    orig_init = tr.DiarizationPipeline.__init__
+
+    def fake_assign(diarize_df, result, fill_nearest=False):
+        captured["fill_nearest"] = fill_nearest
+        return result
+
+    monkeypatch.setattr(wx.whisperx, "assign_word_speakers", fake_assign)
+    monkeypatch.setattr(config, "fill_nearest", False)
+
+    resp = _post(client, response_format="diarized_json", diarize="true")
+    assert resp.status_code == 200
+    assert captured.get("fill_nearest") is False
+
+
+def test_diarize_model_from_config(client):
+    """2.2: DiarizationPipeline конструируется с model_name из конфигурации."""
+    from whisperx_api.config import config
+    from whisperx_api.features.transcription import _whisperx as wx
+    from whisperx_api.features.transcription.service import ensure_diarize_pipeline_sync
+
+    captured = {}
+    orig_init = wx.DiarizationPipeline.__init__
 
     def fake_init(self, *args, **kwargs):
         captured["kwargs"] = kwargs
         self.model = object()
 
-    tr.DiarizationPipeline.__init__ = fake_init
+    wx.DiarizationPipeline.__init__ = fake_init
     old_pipeline = client.app.state.DIARIZE_PIPELINE
     old_token = config.hf_token
     try:
         # Сбрасываем пайплайн, чтобы конструктор реально вызвался
         client.app.state.DIARIZE_PIPELINE = None
         config.hf_token = "test-token"
-        tr._ensure_diarize_pipeline_sync(client.app.state)
+        ensure_diarize_pipeline_sync(client.app.state)
     finally:
-        tr.DiarizationPipeline.__init__ = orig_init
+        wx.DiarizationPipeline.__init__ = orig_init
         client.app.state.DIARIZE_PIPELINE = old_pipeline
         config.hf_token = old_token
 
     assert captured["kwargs"].get("model_name") == config.diarize_model
     assert config.diarize_model == "pyannote/speaker-diarization-community-1"
     assert captured["kwargs"].get("token") == "test-token"
+
+
+def test_prompt_and_hotwords_applied_to_asr_options(client):
+    """prompt/hotwords пробрасываются в options.initial_prompt/hotwords на transcribe."""
+    resp = _post(
+        client,
+        prompt="Контекст встречи",
+        hotwords="WhisperX, pyannote",
+    )
+    assert resp.status_code == 200
+    prompt, hotwords = client._asr.conditioning_calls[-1]
+    assert prompt == "Контекст встречи"
+    assert hotwords == "WhisperX, pyannote"
+
+
+def test_prompt_with_diarize_allowed(client):
+    """prompt + diarize=true → 200 (WhisperX extension)."""
+    resp = _post(
+        client,
+        response_format="diarized_json",
+        diarize="true",
+        prompt="Это совещание",
+        num_speakers="3",
+    )
+    assert resp.status_code == 200
+    DiarizedJsonResponse.model_validate(resp.json())
+
+
+def test_json_response_matches_pydantic_model(client):
+    resp = _post(client, response_format="json")
+    assert resp.status_code == 200
+    TranscriptionJsonResponse.model_validate(resp.json())
+
+
+def test_verbose_json_response_matches_pydantic_model(client):
+    resp = _post(client, response_format="verbose_json", align="true")
+    assert resp.status_code == 200
+    VerboseJsonResponse.model_validate(resp.json())
+
+
+def test_hotwords_token_limit_returns_422(client):
+    """hotwords > 150 Whisper tokens → HTTP 422."""
+    resp = _post(client, hotwords="x" * 151)
+    assert resp.status_code == 422
+
+
+def test_request_without_language_succeeds(client):
+    """ASR transcribe вызывается без явного language (auto-detect path)."""
+    resp = client.post(
+        "/v1/audio/transcriptions",
+        data={},
+        files=[("file", ("audio.wav", b"\x00\x00\x00\x00", "audio/wav"))],
+    )
+    assert resp.status_code == 200
+    assert client._asr.conditioning_calls
