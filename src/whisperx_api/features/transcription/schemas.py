@@ -47,17 +47,31 @@ def parse_bool_form(value: str | None, default: bool = False) -> bool:
 
 
 def count_whisper_tokens(text: str, tokenizer: Any) -> int:
-    if hasattr(tokenizer, "encode"):
-        return len(tokenizer.encode(text))
-    raise TypeError("tokenizer must provide encode()")
+    if not hasattr(tokenizer, "encode"):
+        raise TypeError("tokenizer must provide encode()")
+    encoded = tokenizer.encode(text)
+    # faster-whisper Tokenizer.encode → list[int]; hf_tokenizer.encode → Encoding
+    if hasattr(encoded, "ids"):
+        return len(encoded.ids)
+    return len(encoded)
 
 
 def get_whisper_tokenizer(asr_pipeline: Any) -> Any:
+    """Вернуть tokenizer для token-budget validation.
+
+    WhisperX FasterWhisperPipeline хранит faster_whisper.Tokenizer на pipeline;
+    при auto-language до первого transcribe — fallback на model.hf_tokenizer.
+    """
+    pipeline_tokenizer = getattr(asr_pipeline, "tokenizer", None)
+    if pipeline_tokenizer is not None:
+        return pipeline_tokenizer
+
     model = getattr(asr_pipeline, "model", None)
     if model is not None:
-        tokenizer = getattr(model, "tokenizer", None)
-        if tokenizer is not None:
-            return tokenizer
+        hf_tokenizer = getattr(model, "hf_tokenizer", None)
+        if hf_tokenizer is not None:
+            return hf_tokenizer
+
     raise HTTPException(
         status_code=503,
         detail="ASR tokenizer is not available for conditioning validation",

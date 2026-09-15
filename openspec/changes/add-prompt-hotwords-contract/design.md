@@ -322,7 +322,7 @@ Pydantic-модель не имеет доступа к ASR tokenizer на эт�
 - `None` не участвует в сумме;
 - нарушение → `ValidationError` → HTTP 422.
 
-Tokenizer: `state.ASR_PIPELINE.model.hf_tokenizer` или эквивалент faster-whisper через pipeline (конкретный путь — при реализации, с fallback-тестом в unit).
+Tokenizer (реализовано): `state.ASR_PIPELINE.tokenizer` (приоритет), fallback `state.ASR_PIPELINE.model.hf_tokenizer`. Unit-тесты: `test_get_whisper_tokenizer_*`, `test_count_whisper_tokens_hf_tokenizer_encoding`.
 
 Вызов: в роутере после `parse_transcription_form`, до пайплайна, если модель загружена.
 

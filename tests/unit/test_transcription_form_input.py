@@ -7,11 +7,17 @@
 - speaker params только при do_diarize
 """
 
+from types import SimpleNamespace
+
 import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-from fixtures.transcription import TO_COMMAND_DEFAULTS
+from fixtures.transcription import (
+    TO_COMMAND_DEFAULTS,
+    FakeHfTokenizer,
+    FakeTokenizer,
+)
 from whisperx_api.features.transcription.schemas import (
     COMBINED_MAX_TOKENS,
     HOTWORDS_MAX_CHARS,
@@ -20,6 +26,7 @@ from whisperx_api.features.transcription.schemas import (
     PROMPT_MAX_TOKENS,
     TranscriptionFormInput,
     count_whisper_tokens,
+    get_whisper_tokenizer,
     normalize_optional_str,
     validate_conditioning_tokens,
 )
@@ -95,6 +102,33 @@ def test_combined_token_limit_within_budget():
 
 def test_count_whisper_tokens():
     assert count_whisper_tokens("abcd", CharTokenizer()) == 4
+
+
+def test_count_whisper_tokens_hf_tokenizer_encoding():
+    assert count_whisper_tokens("abcd", FakeHfTokenizer()) == 4
+
+
+def test_get_whisper_tokenizer_from_pipeline_tokenizer():
+    pipeline_tokenizer = FakeTokenizer()
+    pipeline = SimpleNamespace(
+        tokenizer=pipeline_tokenizer,
+        model=SimpleNamespace(hf_tokenizer=FakeHfTokenizer()),
+    )
+    assert get_whisper_tokenizer(pipeline) is pipeline_tokenizer
+
+
+def test_get_whisper_tokenizer_fallback_to_hf_tokenizer():
+    hf_tokenizer = FakeHfTokenizer()
+    pipeline = SimpleNamespace(tokenizer=None, model=SimpleNamespace(hf_tokenizer=hf_tokenizer))
+    assert get_whisper_tokenizer(pipeline) is hf_tokenizer
+
+
+def test_get_whisper_tokenizer_raises_503_when_unavailable():
+    pipeline = SimpleNamespace(tokenizer=None, model=SimpleNamespace(hf_tokenizer=None))
+    with pytest.raises(HTTPException) as exc:
+        get_whisper_tokenizer(pipeline)
+    assert exc.value.status_code == 503
+    assert "tokenizer" in exc.value.detail
 
 
 def test_speaker_validation_only_when_diarize():
