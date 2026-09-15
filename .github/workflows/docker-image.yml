@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v*"
+  pull_request:
 
 env:
   REGISTRY: ghcr.io
@@ -26,9 +27,22 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Extract tag name
+    - name: Set Docker tags
       id: meta
-      run: echo "tag=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+      run: |
+        IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          SHA="${{ github.event.pull_request.head.sha }}"
+          echo "tags<<EOF" >> $GITHUB_OUTPUT
+          echo "${IMAGE}:latest" >> $GITHUB_OUTPUT
+          echo "${IMAGE}:${SHA}" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        else
+          echo "tags<<EOF" >> $GITHUB_OUTPUT
+          echo "${IMAGE}:${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+          echo "${IMAGE}:latest" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        fi
 
     - name: Build and push
       uses: docker/build-push-action@v6
@@ -36,6 +50,4 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          tags: ${{ steps.meta.outputs.tags }}
