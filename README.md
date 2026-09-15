@@ -2,9 +2,39 @@
 
 API server for **[WhisperX](https://github.com/m-bain/whisperX)** exposing an OpenAI-compatible **[`/v1/audio/transcriptions`](https://platform.openai.com/docs/api-reference/audio/createTranscription)** endpoint.
 
-**Supported parameters**: `language`, `response_format` = `json` | `text` | `verbose_json` | `diarized_json`.
+**Supported parameters**: `language`, `prompt`, `response_format` = `json` | `text` | `verbose_json` | `diarized_json`.
 
-**WhisperX extensions**: `align`, `diarize`, `num_speakers`, `min_speakers`, `max_speakers`.
+**WhisperX extensions**: `hotwords`, `align`, `diarize`, `num_speakers`, `min_speakers`, `max_speakers`.
+
+### `prompt` и `hotwords` (conditioning ASR)
+
+- **`prompt`** (OpenAI-compatible) → `initial_prompt` в faster-whisper: короткий контекст встречи.
+- **`hotwords`** (WhisperX extension, одна строка) → `hotwords` в faster-whisper: термины и имена as-is после `trim`.
+- Нормализация backend: `strip()` всей строки; пустая после trim → не применяется; внутренние пробелы и запятые **не изменяются**.
+- Env-defaults для prompt/hotwords **нет** — только параметры запроса.
+
+**Лимиты (ADR):**
+
+| Поле | max chars | max Whisper tokens |
+|------|-----------|-------------------|
+| `prompt` | 500 | 100 |
+| `hotwords` | 1000 | 150 |
+| совместно | рекомендация ≤ 1500 chars | ≤ 200 |
+
+Превышение hard-лимитов → HTTP 422. Основное ограничение — decoder budget faster-whisper (448 tokens), из которого conditioning не должен занимать слишком много места под транскрипцию.
+
+**`prompt` + `diarize=true` разрешены** — WhisperX extension. OpenAI запрещает `prompt` для `gpt-4o-transcribe-diarize`; здесь diarization — отдельный этап pipeline после ASR, конфликта нет.
+
+Example with prompt and hotwords:
+
+```bash
+curl -v http://server/v1/audio/transcriptions \
+  -H "Authorization: Bearer $WHISPERX_API_TOKEN" \
+  -F "language=ru" \
+  -F "prompt=Совещание команды разработки" \
+  -F "hotwords=WhisperX, pyannote, OpenAI" \
+  -F "file=@audio.wav"
+```
 
 When `diarize=true` (or `response_format=diarized_json`), alignment is enabled automatically unless `align=false` is passed explicitly.
 
