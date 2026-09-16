@@ -8,7 +8,7 @@ API server for **[WhisperX](https://github.com/m-bain/whisperX)** exposing an Op
 
 ### `prompt` и `hotwords` (conditioning ASR)
 
-- **`prompt`** (OpenAI-compatible) → `initial_prompt` в faster-whisper: короткий контекст встречи.
+- **`prompt`** (OpenAI-compatible) → `initial_prompt` в faster-whisper: краткая подсказка для первого чанка (НЕ system prompt!).
 - **`hotwords`** (WhisperX extension, одна строка) → `hotwords` в faster-whisper: термины и имена as-is после `trim`.
 - Нормализация backend: `strip()` всей строки; пустая после trim → не применяется; внутренние пробелы и запятые **не изменяются**.
 - Env-defaults для prompt/hotwords **нет** — только параметры запроса.

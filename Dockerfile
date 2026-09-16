@@ -34,7 +34,7 @@ COPY uv.lock /app/uv.lock
 ENV UV_PROJECT_ENVIRONMENT=/app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
 
-# ВАЖНО: pyproject/lock должны быть согласованы с torch 2.10 / torchcodec 0.10
+# ВАЖНО: pyproject/lock должны быть согласованы с torch 2.8 / torchcodec 0.7
 RUN uv sync --no-dev --no-cache
 
 # NLTK punkt_tab для sentence splitting в whisperx alignment
