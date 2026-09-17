@@ -69,9 +69,15 @@ def make_diarization_e2e_result() -> dict:
         "segments": [
             biane_speaker_change_segment("SPEAKER_00", "SPEAKER_01"),
             {
-                "text": "Согласен.",
+                "text": "Промежуточная.",
                 "start": 4.0,
                 "end": 5.0,
+                "speaker": "SPEAKER_01",
+            },
+            {
+                "text": "Согласен.",
+                "start": 5.0,
+                "end": 6.0,
                 "speaker": "SPEAKER_02",
             },
         ],

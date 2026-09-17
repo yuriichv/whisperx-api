@@ -48,18 +48,16 @@ When `diarize=true` (or `response_format=diarized_json`), alignment is enabled a
 
 Валидация (HTTP 400 при нарушении) применяется **только при запрошенной диаризации**: `num_speakers >= 1`, `min_speakers >= 1`, `max_speakers >= 1`, `min_speakers <= max_speakers`. Без диаризации параметры числа спикеров игнорируются.
 
-### Формат `diarized_json` — гибридный word-level
+### Формат `diarized_json` — segment-level speaker assignment
 
-`diarized_json` строится по результату `whisperx.assign_word_speakers`:
+`diarized_json` формируется по Whisper-сегментам после `whisperx.assign_word_speakers`:
 
-- если внутри одного Whisper-сегмента есть **реальная смена спикера** на уровне слов (`word.speaker`), сегмент разбивается на блоки по смене спикера с точными границами `start`/`end`;
-- иначе текст блока берётся целиком из `segment.text` (без потери реплик и без пересборки из токенов);
-- соседние блоки одного спикера склеиваются в один репликовый блок;
+- каждый Whisper-сегмент с непустым `text` → блок с `segment.speaker` и `segment.text`;
+- подряд идущие блоки одного спикера склеиваются в один репликовый блок в `diarized_json.segments` и в `diarized_json.text`;
+- `words[].speaker` **не используется** для разбиения реплик (см. [ADR-001](docs/ADR-001-segment-level%20speaker%20assignment.md));
 - сегмент без спикера отображается с `speaker` = `UNKNOWN` или `null`.
 
-Цена компромисса «без потери текста»: если внутри сегмента реально несколько спикеров, но разбивка по `word.speaker` невозможна (например, у части слов нет спикера), фрагмент атрибутируется доминантному спикеру сегмента (`segment.speaker`).
-
-`verbose_json` по-прежнему отдаёт `words[].speaker` для word-level детализации.
+Trade-off: редкая реальная смена спикера внутри одного aligned segment будет отнесена к `segment.speaker` (majority overlap). Для word-level детализации используйте `verbose_json` с `words[].speaker`.
 
 **Auth bearer token** support: env | process lifetime generation | disabled.
 
