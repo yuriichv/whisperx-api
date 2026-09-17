@@ -1,7 +1,7 @@
 """E2E-тесты API-контракта транскрипции через FastAPI-роутер.
 
 Сценарии (spec transcription-api):
-- диаризация: num/min/max, diarized_json, word-level split
+- диаризация: num/min/max, diarized_json, segment-level speaker
 - prompt/hotwords: проброс в ASR options, char/token limits 500/1000/100/150/200
 - prompt + diarize=true → 200 (WhisperX extension)
 - auto-language: запрос без language проходит
@@ -48,7 +48,7 @@ def test_min_max_speakers_determines_3_participants(client):
 
 
 def test_replicas_in_segment_split_no_text_loss(client):
-    """5.2: реплики разных людей в одном сегменте разделены, текст не потерян."""
+    """5.2: segment-level — один Whisper-сегмент = один блок, текст не теряется."""
     resp = _post(
         client,
         response_format="diarized_json",
@@ -59,22 +59,20 @@ def test_replicas_in_segment_split_no_text_loss(client):
     body = resp.json()
 
     blocks = body["segments"]
-    # Первый сегмент со сменой внутри разбит на 2 блока (SPEAKER_00/SPEAKER_01),
-    # третий блок — отдельный сегмент SPEAKER_02.
+    # Три Whisper-сегмента → три блока; word.speaker внутри первого не вызывает split.
     assert len(blocks) == 3
     assert blocks[0]["speaker"] == "SPEAKER_00"
     assert blocks[1]["speaker"] == "SPEAKER_01"
     assert blocks[2]["speaker"] == "SPEAKER_02"
 
-    # Текст блоков восстанавливает исходную реплику без потери
-    assert "Я попробовал это на Биане." in blocks[0]["text"]
-    assert blocks[1]["text"] == "Ну давай Андрюх"
+    assert blocks[0]["text"] == "Я попробовал это на Биане. Ну давай Андрюх"
+    assert blocks[1]["text"] == "Промежуточная."
+    assert blocks[2]["text"] == "Согласен."
 
-    # Текст из первого блока не потерян в diarized text
     assert "Я попробовал это на Биане." in body["text"]
     assert "Ну давай Андрюх" in body["text"]
+    assert "Согласен." in body["text"]
 
-    # num_speakers имеет приоритет и пробрасывается в пайплайн
     assert client._recorder.calls[-1].get("num_speakers") == 3
 
 

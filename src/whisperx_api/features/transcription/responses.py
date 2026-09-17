@@ -10,8 +10,7 @@ from .schemas import (
     VerboseJsonSegment,
     VerboseJsonWord,
 )
-from .formatting import hybrid_word_blocks
-from .whisperx_types import TranscriptBlock, TranscriptionResult, Word
+from .whisperx_types import Segment, TranscriptBlock, TranscriptionResult, Word
 
 UNKNOWN_SPEAKER = "UNKNOWN"
 _word_adapter = TypeAdapter(VerboseJsonWord)
@@ -116,9 +115,44 @@ def build_diarized_text(blocks: list[TranscriptBlock]) -> str:
     return "\n".join(lines)
 
 
+def segment_blocks(segments: list[Segment]) -> list[TranscriptBlock]:
+    """Построить репликовые блоки из Whisper-сегментов (segment-level speaker)."""
+    blocks: list[TranscriptBlock] = []
+    for seg in segments:
+        text = (seg.get("text") or "").strip()
+        if not text:
+            continue
+        blocks.append(
+            {
+                "start": seg.get("start"),
+                "end": seg.get("end"),
+                "text": text,
+                "speaker": seg.get("speaker"),
+            }
+        )
+    return blocks
+
+
+def merge_adjacent_same_speaker(blocks: list[TranscriptBlock]) -> list[TranscriptBlock]:
+    """Склеить подряд идущие блоки одного спикера в один репликовый блок."""
+    merged: list[TranscriptBlock] = []
+    for block in blocks:
+        if merged and merged[-1].get("speaker") == block.get("speaker"):
+            last = merged[-1]
+            last["end"] = block.get("end", last.get("end"))
+            last["text"] = " ".join(
+                [last.get("text", ""), block.get("text", "")]
+            ).strip()
+            continue
+        merged.append(dict(block))
+    return merged
+
+
 def diarized_response(
     result: TranscriptionResult, language: str | None
 ) -> DiarizedJsonResponse:
-    blocks = hybrid_word_blocks(result.get("segments") or [])
+    blocks = merge_adjacent_same_speaker(
+        segment_blocks(result.get("segments") or [])
+    )
     speaker_text = build_diarized_text(blocks)
     return build_diarized_json(result, blocks, speaker_text, language)
