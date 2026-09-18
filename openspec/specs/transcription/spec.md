@@ -2,6 +2,10 @@
 
 Deploy-time configuration and ASR pipeline loading for the transcription service.
 
+## Purpose
+
+Конфигурация загрузки ASR pipeline (в том числе VAD) при старте сервиса.
+
 ## Requirements
 
 ### Requirement: VAD method при загрузке ASR

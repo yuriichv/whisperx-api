@@ -1,7 +1,7 @@
 """E2E-тесты API-контракта транскрипции через FastAPI-роутер.
 
 Сценарии (spec transcription-api):
-- диаризация: num/min/max, diarized_json, word-level split
+- диаризация: num/min/max, diarized_json, segment-level blocks
 - prompt/hotwords: проброс в ASR options, char/token limits 500/1000/100/150/200
 - prompt + diarize=true → 200 (WhisperX extension)
 - auto-language: запрос без language проходит
@@ -47,8 +47,8 @@ def test_min_max_speakers_determines_3_participants(client):
     assert call.get("max_speakers") == 3
 
 
-def test_replicas_in_segment_split_no_text_loss(client):
-    """5.2: реплики разных людей в одном сегменте разделены, текст не потерян."""
+def test_replicas_in_one_whisper_segment_stay_single_block(client):
+    """diarized_json: один Whisper-сегмент → один block по segment.speaker."""
     resp = _post(
         client,
         response_format="diarized_json",
@@ -59,23 +59,44 @@ def test_replicas_in_segment_split_no_text_loss(client):
     body = resp.json()
 
     blocks = body["segments"]
-    # Первый сегмент со сменой внутри разбит на 2 блока (SPEAKER_00/SPEAKER_01),
-    # третий блок — отдельный сегмент SPEAKER_02.
-    assert len(blocks) == 3
+    # Первый Whisper-сегмент (смена word.speaker внутри) — один block SPEAKER_00;
+    # второй сегмент — SPEAKER_02; после merge соседних одинаковых — 2 блока.
+    assert len(blocks) == 2
     assert blocks[0]["speaker"] == "SPEAKER_00"
-    assert blocks[1]["speaker"] == "SPEAKER_01"
-    assert blocks[2]["speaker"] == "SPEAKER_02"
-
-    # Текст блоков восстанавливает исходную реплику без потери
+    assert blocks[1]["speaker"] == "SPEAKER_02"
     assert "Я попробовал это на Биане." in blocks[0]["text"]
-    assert blocks[1]["text"] == "Ну давай Андрюх"
+    assert "Ну давай Андрюх" in blocks[0]["text"]
 
-    # Текст из первого блока не потерян в diarized text
     assert "Я попробовал это на Биане." in body["text"]
     assert "Ну давай Андрюх" in body["text"]
 
-    # num_speakers имеет приоритет и пробрасывается в пайплайн
     assert client._recorder.calls[-1].get("num_speakers") == 3
+
+
+def test_verbose_json_keeps_word_speakers_with_diarize(client):
+    """verbose_json: words[].speaker для диагностики при diarize."""
+    resp = _post(
+        client,
+        response_format="verbose_json",
+        diarize="true",
+        align="true",
+    )
+    assert resp.status_code == 200
+    body = VerboseJsonResponse.model_validate(resp.json())
+    first = body.segments[0]
+    assert first.words is not None
+    speakers = {w.speaker for w in first.words if w.speaker}
+    assert "SPEAKER_00" in speakers
+    assert "SPEAKER_01" in speakers
+
+    diarized = _post(
+        client,
+        response_format="diarized_json",
+        diarize="true",
+        align="true",
+    ).json()
+    assert len(diarized["segments"]) == 2
+    assert len(diarized["segments"]) < len(first.words or [])
 
 
 def test_num_speakers_priority_over_min_max(client):

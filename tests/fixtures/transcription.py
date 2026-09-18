@@ -62,6 +62,25 @@ def biane_speaker_change_segment(
     )
 
 
+def adr_nulyami_segment(
+    segment_speaker: str = "SPEAKER_02",
+) -> dict:
+    """Эталон ADR-001: разные word.speaker, итог по segment.speaker."""
+    return segment(
+        "Это с нулями или нау?",
+        27.176,
+        28.516,
+        words=[
+            word("Это", 27.176, 27.316, "SPEAKER_02"),
+            word("с", 27.336, 27.396, "SPEAKER_02"),
+            word("нулями", 27.436, 27.796, "SPEAKER_02"),
+            word("или", 27.816, 27.956, "SPEAKER_02"),
+            word("нау?", 28.016, 28.516, "SPEAKER_00"),
+        ],
+        speaker=segment_speaker,
+    )
+
+
 def make_diarization_e2e_result() -> dict:
     return {
         "language": "ru",
