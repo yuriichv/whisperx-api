@@ -48,18 +48,21 @@ When `diarize=true` (or `response_format=diarized_json`), alignment is enabled a
 
 Валидация (HTTP 400 при нарушении) применяется **только при запрошенной диаризации**: `num_speakers >= 1`, `min_speakers >= 1`, `max_speakers >= 1`, `min_speakers <= max_speakers`. Без диаризации параметры числа спикеров игнорируются.
 
-### Формат `diarized_json` — гибридный word-level
+### Формат `diarized_json` — segment-level (ADR-001)
 
-`diarized_json` строится по результату `whisperx.assign_word_speakers`:
+После `whisperx.assign_word_speakers` сервис **не** переопределяет `segment.speaker` и **не** режет Whisper-сегмент по `word.speaker`:
 
-- если внутри одного Whisper-сегмента есть **реальная смена спикера** на уровне слов (`word.speaker`), сегмент разбивается на блоки по смене спикера с точными границами `start`/`end`;
-- иначе текст блока берётся целиком из `segment.text` (без потери реплик и без пересборки из токенов);
-- соседние блоки одного спикера склеиваются в один репликовый блок;
-- сегмент без спикера отображается с `speaker` = `UNKNOWN` или `null`.
+- один aligned Whisper-сегмент → один блок `diarized_json` с `segment.text` и `segment.speaker`;
+- соседние Whisper-сегменты с одним `segment.speaker` могут склеиваться в один репликовый блок (только представление);
+- сегмент без спикера — `speaker` = `UNKNOWN` или `null`.
 
-Цена компромисса «без потери текста»: если внутри сегмента реально несколько спикеров, но разбивка по `word.speaker` невозможна (например, у части слов нет спикера), фрагмент атрибутируется доминантному спикеру сегмента (`segment.speaker`).
+**BREAKING:** раньше при смене `word.speaker` внутри сегмента выдавалось несколько блоков; теперь — один блок по upstream `segment.speaker`.
 
-`verbose_json` по-прежнему отдаёт `words[].speaker` для word-level детализации.
+`verbose_json` при диаризации и alignment по-прежнему содержит `words[].speaker` **для диагностики** (расхождение с `segment.speaker`), но эти метки не участвуют в сборке `diarized_json`.
+
+Рекомендуемый деплой для качества атрибуции (VAD-first, см. [docs/ADR-001-speaker-segments.md](docs/ADR-001-speaker-segments.md)): **`WHISPERX_VAD_METHOD=silero`**. Manual regression на эталонной фразе «Это с нулями или нау?» — с `diarized_json`, один блок, ожидаемый спикер реплики из эталона записи.
+
+Fallback ADR (вариант C, override `segment.speaker` по словам) **не реализуется**.
 
 **Auth bearer token** support: env | process lifetime generation | disabled.
 
@@ -82,6 +85,8 @@ curl -v http://server/v1/audio/transcriptions \
 **`WHISPERX_FILL_NEAREST`** (default `true`): when enabled, words and segments without direct time overlap with a diarization interval get the nearest speaker. Disable (`false`) if boundary words are assigned to the wrong speaker on noisy audio.
 
 **`WHISPERX_DIARIZE_MODEL`** (default `pyannote/speaker-diarization-community-1`): имя diarization-модели pyannote, используемой для `whisperx.DiarizationPipeline`. Число участников зависит от модели; при проблемах с разделением спикеров можно указать другую модель.
+
+**`WHISPERX_VAD_METHOD`** (recommended `silero` for diarization per ADR-001): метод VAD для `whisperx.load_model` при старте сервиса (например `silero` или `pyannote`). Если не задан, используется поведение WhisperX по умолчанию.
 
 **Notes**: 
 - `model` does not affect behavior and is kept for OpenAI client compatibility: there is only one actual model, configured at application startup (admin-controlled).

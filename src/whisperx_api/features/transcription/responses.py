@@ -10,7 +10,7 @@ from .schemas import (
     VerboseJsonSegment,
     VerboseJsonWord,
 )
-from .formatting import hybrid_word_blocks
+from .formatting import segment_level_blocks
 from .whisperx_types import TranscriptBlock, TranscriptionResult, Word
 
 UNKNOWN_SPEAKER = "UNKNOWN"
@@ -119,6 +119,6 @@ def build_diarized_text(blocks: list[TranscriptBlock]) -> str:
 def diarized_response(
     result: TranscriptionResult, language: str | None
 ) -> DiarizedJsonResponse:
-    blocks = hybrid_word_blocks(result.get("segments") or [])
+    blocks = segment_level_blocks(result.get("segments") or [])
     speaker_text = build_diarized_text(blocks)
     return build_diarized_json(result, blocks, speaker_text, language)
