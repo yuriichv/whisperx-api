@@ -17,6 +17,7 @@ services:
       WHISPERX_DEFAULT_DIARIZE: "false"
       WHISPERX_FILL_NEAREST: "true"  # assign nearest diarization speaker to words without overlap
       WHISPERX_DIARIZE_MODEL: "pyannote/speaker-diarization-community-1"  # diarization model name
+      # WHISPERX_VAD_METHOD: "silero"  # optional: whisperx load_model vad_method (omit = library default)
       WHISPERX_NO_AUTH: "false"
       WHISPERX_API_TOKEN: "fxpy2SU9qmdSOb9R-ahu8Vt5V5dv9Cq0O11-D4VnO3c"
       HF_HOME: "/app/.cache/huggingface"

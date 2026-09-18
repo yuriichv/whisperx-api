@@ -25,6 +25,8 @@ class Config(BaseSettings):
     hf_token: str = "" # HUGGINGFACE_TOKEN for download dearize model
     # Имя diarization-модели pyannote, используемой DiarizationPipeline (env WHISPERX_DIARIZE_MODEL)
     diarize_model: str = "pyannote/speaker-diarization-community-1"
+    # Метод VAD для whisperx.load_model (env WHISPERX_VAD_METHOD); пусто — дефолт WhisperX
+    vad_method: str = ""
 
 
 config = Config()

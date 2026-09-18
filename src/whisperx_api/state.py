@@ -40,11 +40,17 @@ class AppState:
                 )
                 self.ASR_PIPELINE = None
             else:
+                load_model_kwargs: dict[str, Any] = {
+                    "device": self.DEVICE,
+                    "compute_type": self.COMPUTE_TYPE,
+                    "language": config.default_language,
+                }
+                vad_method = (config.vad_method or "").strip()
+                if vad_method:
+                    load_model_kwargs["vad_method"] = vad_method
                 self.ASR_PIPELINE = whisperx.load_model(
                     config.default_model,
-                    device=self.DEVICE,
-                    compute_type=self.COMPUTE_TYPE,
-                    language=config.default_language,
+                    **load_model_kwargs,
                 )
                 logger.debug(
                     "whisperx loaded. Pipeline: %s, model: %s",
