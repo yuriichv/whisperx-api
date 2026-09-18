@@ -83,6 +83,8 @@ curl -v http://server/v1/audio/transcriptions \
 
 **`WHISPERX_DIARIZE_MODEL`** (default `pyannote/speaker-diarization-community-1`): имя diarization-модели pyannote, используемой для `whisperx.DiarizationPipeline`. Число участников зависит от модели; при проблемах с разделением спикеров можно указать другую модель.
 
+**`WHISPERX_VAD_METHOD`** (optional): метод VAD для `whisperx.load_model` при старте сервиса (например `silero` или `pyannote`). Если не задан, используется поведение WhisperX по умолчанию.
+
 **Notes**: 
 - `model` does not affect behavior and is kept for OpenAI client compatibility: there is only one actual model, configured at application startup (admin-controlled).
 
